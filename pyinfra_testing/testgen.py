@@ -10,14 +10,14 @@ class TestGenerator(type):
         bases,
         attrs,
         # Directory to find test files (.yaml, .yml, .json)
-        tests_dir: str = "",
+        tests_dir: Path = Path("tests"),
         # Prefix for the generated test methods
         test_prefix: str = "testgen_",
         # Class method name to call for each test, must start with _ to avoid being run as a test
         test_method: str = "_test",
     ):
         test_suffixes = {".yaml", ".yml", ".json"}
-        test_files = [f for f in Path(tests_dir).iterdir() if f.suffix in test_suffixes]
+        test_files = [f for f in tests_dir.iterdir() if f.suffix in test_suffixes]
 
         def gen_test(test_name, test_file):
             def test(self):
