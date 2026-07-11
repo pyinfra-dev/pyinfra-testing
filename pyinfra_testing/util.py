@@ -8,6 +8,7 @@ import types
 import typing
 from datetime import datetime, timezone
 from inspect import Parameter, getcallargs, getfullargspec, signature
+from io import StringIO
 from os import path
 from pathlib import Path
 from unittest.mock import patch
@@ -53,6 +54,8 @@ def parse_value(value):
             return datetime.fromisoformat(value[9:])
         if value.startswith("path:"):
             return Path(value[5:])
+        if value.startswith("io:"):
+            return StringIO(value[3:])
         return value
 
     if isinstance(value, list):
@@ -74,6 +77,7 @@ def _is_plain_instance(value, annotation):
         and typing.get_origin(annotation) is None
         and not issubclass(annotation, enum.Enum)
         and not dataclasses.is_dataclass(annotation)
+        and not isinstance(value, StringIO)
         and isinstance(value, annotation)
     )
 
