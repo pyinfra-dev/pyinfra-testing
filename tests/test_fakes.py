@@ -2,9 +2,12 @@
 (global-argument stripping)."""
 
 import enum
+from dataclasses import dataclass
 
 import pytest
 from pyinfra.api.util import get_kwargs_str
+from pyinfra.facts.pkg import PkgPackages
+from pyinfra.facts.util.packages import PackageInfo, PackageStatus
 
 from pyinfra_testing.util import FakeFact, FakeHost, FakeState, create_host
 
@@ -76,6 +79,28 @@ class ArgFact:
         return f"echo {name}"
 
 
+@dataclass
+class Widget:
+    name: str
+    count: int | None = None
+
+
+class WidgetFact:
+    def command(self):
+        return "echo widget"
+
+    def process(self, output) -> Widget:
+        return Widget(name="".join(output), count=1)
+
+
+class WidgetListFact:
+    def command(self):
+        return "echo widgets"
+
+    def process(self, output) -> list[Widget]:
+        return [Widget(name="a"), Widget(name="b")]
+
+
 def _host(facts):
     return create_host(FakeState(), facts=facts)
 
@@ -108,3 +133,47 @@ def test_get_fact_missing_arg_key_raises():
     host = _host({key: {}})  # fact present, but no entry for name=web
     with pytest.raises(KeyError):
         host.get_fact(ArgFact, "web")
+
+
+# --- FakeHost.get_fact: dataclass coercion ---------------------------------- #
+def test_get_fact_coerces_noarg_fact_to_dataclass():
+    key = FakeHost._get_fact_key(WidgetFact)
+    host = _host({key: {"name": "spinner", "count": 3}})
+    result = host.get_fact(WidgetFact)
+    assert isinstance(result, Widget)
+    assert result.name == "spinner"
+    assert result.count == 3
+
+
+def test_get_fact_coerces_list_of_dataclasses():
+    key = FakeHost._get_fact_key(WidgetListFact)
+    host = _host({key: [{"name": "a", "count": 1}, {"name": "b"}]})
+    result = host.get_fact(WidgetListFact)
+    assert isinstance(result, list)
+    assert all(isinstance(widget, Widget) for widget in result)
+    assert result[0].name == "a"
+    assert result[1].count is None
+
+
+def test_get_fact_coerces_real_pkg_packages():
+    key = FakeHost._get_fact_key(PkgPackages)
+    host = _host(
+        {
+            key: [
+                {
+                    "name": "vim",
+                    "installed_versions": ["9.0"],
+                    "available_version": "9.1",
+                    "status": "upgradeable",
+                },
+                {"name": "git", "installed_versions": ["2.40"]},
+            ],
+        },
+    )
+    result = host.get_fact(PkgPackages)
+    assert isinstance(result, list)
+    assert isinstance(result[0], PackageInfo)
+    assert result[0].name == "vim"
+    assert result[0].status is PackageStatus.UPGRADEABLE
+    assert result[0].installed_versions == ("9.0",)
+    assert result[1].status is PackageStatus.INSTALLED
