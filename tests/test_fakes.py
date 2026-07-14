@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 import pytest
 from pyinfra.api.util import get_kwargs_str
-from pyinfra.facts.pkg import PkgPackages
 from pyinfra.facts.util.packages import PackageInfo, PackageStatus
 
 from pyinfra_testing.util import FakeFact, FakeHost, FakeState, create_host
@@ -101,6 +100,14 @@ class WidgetListFact:
         return [Widget(name="a"), Widget(name="b")]
 
 
+class PackageListFact:
+    def command(self):
+        return "echo packages"
+
+    def process(self, output) -> list[PackageInfo]:
+        return []
+
+
 def _host(facts):
     return create_host(FakeState(), facts=facts)
 
@@ -155,8 +162,8 @@ def test_get_fact_coerces_list_of_dataclasses():
     assert result[1].count is None
 
 
-def test_get_fact_coerces_real_pkg_packages():
-    key = FakeHost._get_fact_key(PkgPackages)
+def test_get_fact_coerces_real_package_info():
+    key = FakeHost._get_fact_key(PackageListFact)
     host = _host(
         {
             key: [
@@ -170,7 +177,7 @@ def test_get_fact_coerces_real_pkg_packages():
             ],
         },
     )
-    result = host.get_fact(PkgPackages)
+    result = host.get_fact(PackageListFact)
     assert isinstance(result, list)
     assert isinstance(result[0], PackageInfo)
     assert result[0].name == "vim"
