@@ -134,3 +134,16 @@ def test_extra_positional_args_beyond_signature_pass_through():
     # More positional values than named params (e.g. *args) are left as-is.
     args, kwargs = coerce_operation_arguments(op_plain, ["n", 2, "extra"], {})
     assert args == ["n", 2, "extra"]
+
+
+# --- _coerce_value: tuples -------------------------------------------------- #
+def test_tuple_is_built_from_list():
+    assert _coerce_value([1, 2, 3], tuple[int, ...]) == (1, 2, 3)
+
+
+def test_tuple_elements_are_coerced():
+    assert _coerce_value([{"name": "eth0"}], tuple[Net, ...]) == (Net("eth0"),)
+
+
+def test_fixed_size_tuple_is_coerced():
+    assert _coerce_value(["a", 1], tuple[str, int]) == ("a", 1)

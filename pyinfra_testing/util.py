@@ -15,7 +15,30 @@ from unittest.mock import patch
 
 from pyinfra.api import Config, Inventory
 from pyinfra.api.arguments import all_argument_meta
+from pyinfra.api.facts import FactBase
 from pyinfra.api.util import get_kwargs_str
+
+
+def _get_fact_return_type(fact_cls):
+    """Return the declared return type of ``fact_cls`` if available.
+
+    First checks the ``process`` method's return annotation, then falls back
+    to the ``FactBase[T]`` generic argument. Returns ``None`` when the type
+    cannot be determined.
+    """
+    try:
+        hints = typing.get_type_hints(fact_cls.process)
+    except Exception:
+        hints = {}
+    if "return" in hints:
+        return hints["return"]
+
+    for base in getattr(fact_cls, "__orig_bases__", ()):
+        if typing.get_origin(base) is FactBase:
+            args = typing.get_args(base)
+            if args:
+                return args[0]
+    return None
 
 
 def get_command_string(command):
@@ -126,7 +149,7 @@ def _coerce_value(value, annotation):
             **{key: _coerce_value(val, field_hints.get(key)) for key, val in value.items()}
         )
 
-    # dict[K, V] / list[V]: coerce the contents.
+    # dict[K, V] / list[V] / tuple[T, ...]: coerce the contents.
     if origin is dict and isinstance(value, dict):
         args = typing.get_args(annotation)
         value_type = args[1] if len(args) == 2 else None
@@ -135,6 +158,12 @@ def _coerce_value(value, annotation):
         args = typing.get_args(annotation)
         value_type = args[0] if args else None
         return [_coerce_value(val, value_type) for val in value]
+    if origin is tuple and isinstance(value, (list, tuple)):
+        args = typing.get_args(annotation)
+        if len(args) == 2 and args[1] is Ellipsis:
+            value_type = args[0]
+            return tuple(_coerce_value(val, value_type) for val in value)
+        return tuple(_coerce_value(val, arg) for val, arg in zip(value, args))
 
     return value
 
@@ -385,8 +414,14 @@ class FakeHost:
             kwargs_str = get_kwargs_str(kwargs)
             if kwargs_str not in fact:
                 raise KeyError(f"Missing test fact key: {fact_key} -> {kwargs_str}")
-            return fact.get(kwargs_str)
-        return fact
+            value = fact.get(kwargs_str)
+        else:
+            value = fact.data
+
+        return_type = _get_fact_return_type(fact_cls)
+        if return_type is not None:
+            value = _coerce_value(value, return_type)
+        return value
 
 
 class FakeFile:
