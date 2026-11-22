@@ -6,9 +6,10 @@ noop reporting, and reading an injected fact.
 """
 
 import enum
+import logging
 from dataclasses import dataclass
 
-from pyinfra import host
+from pyinfra import host, logger
 from pyinfra.api import FactBase, StringCommand, operation
 
 
@@ -53,3 +54,30 @@ def sample_op(name, color: Color | None = None, opts: Opts | None = None, presen
 def fact_op(name):
     fact = host.get_fact(SampleFact, _sudo=True)
     yield StringCommand("echo", name, str(fact["value"]))
+
+
+@operation()
+def logging_op(value):
+    logging.getLogger("pyinfra.testing").debug("value=%s", value)
+    yield StringCommand("echo", value)
+
+
+class LoggingFact(SampleFact):
+    def process(self, output):
+        logger.warning("Processing value %s", output[0])
+        return super().process(output)
+
+
+@operation()
+def stateful_op():
+    yield StringCommand("echo", host.state.cwd, str(host.state.config.DIFF))
+    host.state.cwd = "/changed"
+    host.state.config.DIFF = True
+
+
+class StatefulFact(SampleFact):
+    def process(self, output):
+        result = {"cwd": host.state.cwd, "diff": host.state.config.DIFF}
+        host.state.cwd = "/changed"
+        host.state.config.DIFF = True
+        return result

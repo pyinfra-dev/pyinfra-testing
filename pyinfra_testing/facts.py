@@ -13,6 +13,7 @@ from pyinfra.api.facts import ShortFactBase
 from pyinfra.context import ctx_host, ctx_state
 from pyinfra_cli.util import json_encode
 
+from .logs import assert_logs, capture_logs
 from .testgen import TestGenerator
 from .util import FakeState, canonical_mapping_key, create_host, get_command_string
 
@@ -83,16 +84,16 @@ def make_fact_tests(base_import_path: str, fact_path: str, tests_folder: Path) -
         test_prefix=f"test_{fact.name}_",
         test_method="_test",
     ):
-        @classmethod
-        def setUpClass(cls):
-            # Create a global fake state that attach to context state
-            cls.state = FakeState()
+        def setUp(self):
+            self.state = FakeState()
 
         def _test(self, test_name, test_data, fact=fact):
             host = create_host(self.state, facts=test_data.get("facts", {}))
-            with ctx_state.use(self.state):
-                with ctx_host.use(host):
-                    self._test_fn(test_name, test_data, fact)
+            with capture_logs(enabled=test_data.get("expected_logs") is not None) as logs:
+                with ctx_state.use(self.state):
+                    with ctx_host.use(host):
+                        self._test_fn(test_name, test_data, fact)
+            assert_logs(logs.getvalue(), test_data.get("expected_logs"))
 
         def _test_fn(self, test_name, test_data, fact):
             short_fact = None

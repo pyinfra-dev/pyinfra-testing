@@ -9,9 +9,10 @@ from unittest.mock import patch
 
 from pyinfra.api.command import PyinfraCommand
 
+from .logs import assert_logs, capture_logs
 from .testgen import TestGenerator
 
-from pyinfra.api import FileDownloadCommand, FileUploadCommand, FunctionCommand, StringCommand
+from pyinfra.api import Config, FileDownloadCommand, FileUploadCommand, FunctionCommand, StringCommand
 from pyinfra.context import ctx_host, ctx_state
 from pyinfra_cli.util import json_encode
 
@@ -111,19 +112,20 @@ def make_operation_tests(base_import_path: str, operation_path: str, tests_folde
         test_prefix=f"test_{module_name}_{op_name}_",
         test_method="_test",
     ):
-        @classmethod
-        def setUpClass(cls):
-            # Create a global fake state that attach to context state
-            cls.state = FakeState()
+        def setUp(self):
+            self.state = FakeState()
 
         def _test(self, test_name, test_data):
             if (
                 "require_platform" in test_data
                 and PLATFORM_NAME not in test_data["require_platform"]
             ):
-                return
+                self.skipTest(f"Requires platform: {test_data['require_platform']}")
 
             op_test_name = f"{operation_path}/{test_name}.json"
+
+            if "config" in test_data:
+                self.state.config = Config(**test_data["config"])
 
             # Create a host with this tests facts and attach to context host
             host = create_host(self.state, facts=test_data.get("facts", {}))
@@ -135,25 +137,28 @@ def make_operation_tests(base_import_path: str, operation_path: str, tests_folde
             # Coerce values to the operation's annotated enum/dataclass types.
             args, kwargs = coerce_operation_arguments(op, args, kwargs)
 
-            with ctx_state.use(self.state):
-                with ctx_host.use(host):
-                    with patch_files(test_data.get("local_files", {})):
-                        try:
-                            output_commands = list(op._inner(*args, **kwargs))
-                        except Exception as e:
-                            if allowed_exception:
-                                allowed_exception_names = allowed_exception.get("names")
-                                if not allowed_exception_names:
-                                    allowed_exception_names = [allowed_exception["name"]]
+            with capture_logs(enabled=test_data.get("expected_logs") is not None) as logs:
+                with ctx_state.use(self.state):
+                    with ctx_host.use(host):
+                        with patch_files(test_data.get("local_files", {})):
+                            try:
+                                output_commands = list(op._inner(*args, **kwargs))
+                            except Exception as e:
+                                if allowed_exception:
+                                    allowed_exception_names = allowed_exception.get("names")
+                                    if not allowed_exception_names:
+                                        allowed_exception_names = [allowed_exception["name"]]
 
-                                if e.__class__.__name__ not in allowed_exception_names:
-                                    print("Wrong exception raised!")
-                                    raise
+                                    if e.__class__.__name__ not in allowed_exception_names:
+                                        print("Wrong exception raised!")
+                                        raise
 
-                                assert e.args[0] == allowed_exception["message"]
-                                return
+                                    assert e.args[0] == allowed_exception["message"]
+                                    return
 
-                            raise
+                                raise
+
+            assert_logs(logs.getvalue(), test_data.get("expected_logs"))
 
             commands = parse_commands(output_commands)
             assert_commands(commands, test_data["commands"])

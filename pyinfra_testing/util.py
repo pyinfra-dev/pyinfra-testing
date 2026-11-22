@@ -13,7 +13,8 @@ from os import path
 from pathlib import Path
 from unittest.mock import patch
 
-from pyinfra.api import Config, Inventory
+from pyinfra import logger
+from pyinfra.api import Config, HiddenValue, Inventory
 from pyinfra.api.arguments import all_argument_meta
 from pyinfra.api.util import get_kwargs_str
 
@@ -56,6 +57,8 @@ def parse_value(value):
             return Path(value[5:])
         if value.startswith("io:"):
             return StringIO(value[3:])
+        if value.startswith("hidden:"):
+            return HiddenValue(value[7:])
         return value
 
     if isinstance(value, list):
@@ -331,6 +334,9 @@ class FakeHost:
 
     def noop(self, description):
         self.noop_description = description
+
+    def log(self, message, log_func=logger.info):
+        log_func(f"{self.print_prefix}{message}")
 
     def get_temp_filename(*args, **kwargs):
         return "_tempfile_"

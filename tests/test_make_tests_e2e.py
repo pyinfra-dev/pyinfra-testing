@@ -10,6 +10,8 @@ mismatch reporting.
 import json
 import unittest
 
+import pytest
+
 from pyinfra_testing.facts import make_fact_tests
 from pyinfra_testing.operations import make_operation_tests
 from pyinfra_testing.util import FakeHost
@@ -130,3 +132,24 @@ def test_operation_command_mismatch_is_reported(tmp_path):
     result = run(make_operation_tests(BASE, "_fixtures.sample_op", tmp_path))
     assert result.testsRun == 1
     assert not result.wasSuccessful()
+
+
+@pytest.mark.parametrize("kind", ["operation", "fact"])
+def test_state_mutations_do_not_leak_between_cases(tmp_path, kind):
+    if kind == "operation":
+        case = {"commands": ["echo / False"]}
+        generator = make_operation_tests
+        target = "_fixtures.stateful_op"
+    else:
+        case = {
+            "command": "echo sample",
+            "requires_command": "echo",
+            "output": [],
+            "fact": {"cwd": "/", "diff": False},
+        }
+        generator = make_fact_tests
+        target = "_fixtures.StatefulFact"
+    write_cases(tmp_path, {"first": case, "second": case})
+    result = run(generator(BASE, target, tmp_path))
+    assert result.testsRun == 2
+    assert result.wasSuccessful(), result.failures or result.errors

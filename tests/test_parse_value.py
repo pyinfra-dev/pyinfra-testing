@@ -3,6 +3,8 @@
 from datetime import datetime
 from pathlib import Path
 
+from pyinfra.api import HiddenValue
+
 from pyinfra_testing.util import parse_value
 
 
@@ -34,3 +36,12 @@ def test_recurses_into_dicts_and_lists():
 
 def test_list_without_marker_is_plain_list():
     assert parse_value(["a", "b"]) == ["a", "b"]
+
+
+def test_hidden_values_in_nested_arguments():
+    result = parse_value({"passwords": ["hidden:s3cr3t", "hidden:"]})
+    secret, empty = result["passwords"]
+    assert isinstance(secret, HiddenValue)
+    assert secret.unmask() == "s3cr3t"
+    assert isinstance(empty, HiddenValue)
+    assert empty.unmask() == ""

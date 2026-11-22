@@ -163,6 +163,8 @@ commands:
 # exception: { name: ValueError, message: "..." }   # or names: [A, B]
 # require_platform: [Linux]                          # skip on other platforms
 # local_files: { files: {...}, dirs: {...}, links: {...} }
+# config: { DIFF: true }                            # per-case pyinfra Config
+# expected_logs: { contains: [...], excludes: [...] }
 ```
 
 Operations are invoked via `op._inner(*args, **kwargs)`. If a case yields no
@@ -180,6 +182,49 @@ be supplied; key the JSON `facts` data with that canonical string.
 Yielded commands may be plain strings, `StringCommand`, `FunctionCommand`,
 `FileUploadCommand`/`FileDownloadCommand` (compared as `["upload", data, dest]`
 / `["download", src, dest]`), or a connector-argument dict.
+
+### Operation configuration
+
+Operation cases accept a `config` mapping of pyinfra `Config` options. For
+example, to enable content diffs:
+
+```yaml
+config:
+  DIFF: true
+```
+
+Each case gets a fresh state and configuration. Options omitted from `config`
+use pyinfra's defaults, and changes do not carry over to other cases.
+
+### Checking logs
+
+Both fact and operation cases accept `expected_logs`. `contains` and `excludes`
+are lists of literal, case-sensitive substrings checked against formatted
+messages from the `pyinfra` logger and its descendants, including DEBUG messages
+and logged exception tracebacks. Either list can be omitted. An `excludes`
+check passes if no messages are logged, add a `contains` check when you
+also want to confirm that an expected message was logged.
+
+```yaml
+args: ["hidden:test-password"]
+commands:
+  - raw: "echo test-password"
+    masked: "echo *MASKED*"
+expected_logs:
+  contains: ["Preparing operation"]
+  excludes: ["test-password"]
+```
+
+This example assumes an operation that logs `Preparing operation` and yields
+`StringCommand("echo", secret)`. The `hidden:` prefix creates a `HiddenValue`,
+including inside nested argument dictionaries and lists. Expected commands
+still contain the raw data intended for execution or upload.
+
+If a check fails, the error message shows the expected or forbidden string and
+the captured logs. Cases without `expected_logs` leave logging settings alone.
+
+The harness checks pyinfra logs emitted while generating commands and processing
+facts, not output of the commands, since they are not executed.
 
 ### Enum and dataclass arguments
 
@@ -208,6 +253,8 @@ prefix:
 
 - `"datetime:2025-01-01T00:00:00"` → `datetime`
 - `"path:/etc/hosts"` → `pathlib.Path`
+- `"io:template contents"` → `io.StringIO`
+- `"hidden:test-password"` → `pyinfra.api.HiddenValue`
 - `["set:", "a", "b"]` → `set`
 
 ## Running
